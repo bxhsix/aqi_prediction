@@ -1,0 +1,148 @@
+import os
+import sys
+import joblib
+import pandas as pd
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict, Any
+import uvicorn
+
+# 添加项目根目录到Python路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# ===================== 配置项 =====================
+# 修改模型路径为AutoGluon模型目录
+MODEL_PATH = "../model/autogluon_model/"
+API_HOST = "0.0.0.0"
+API_PORT = 8000
+
+# ===================== AQI等级配置 =====================
+AQI_GRADES = [
+    (0, 50, "Good（优）", "基本无空气污染，各类人群可正常活动"),
+    (51, 100, "Moderate（良）", "极少数敏感人群有较弱影响，敏感人群可减少户外活动"),
+    (101, 150, "Unhealthy for Sensitive Groups（对敏感人群不健康）", "敏感人群出现不适，应避免户外活动"),
+    (151, 200, "Unhealthy（不健康）", "普通人群出现不适，所有人群应减少户外活动"),
+    (201, 300, "Very Unhealthy（非常不健康）", "所有人群可能出现健康问题，应避免户外活动，留在室内"),
+    (301, 500, "Hazardous（危险）", "所有人群面临严重健康风险，应避免所有户外活动，紧急防护")
+]
+
+# ===================== 初始化FastAPI应用 =====================
+app = FastAPI(title="AQI Prediction API", version="1.0")
+
+# ===================== 数据模型定义 =====================
+class AQIPredictionRequest(BaseModel):
+    TEMP: float
+    DEWP: float
+    SLP: float
+    WDSP: float
+    MAX: float
+    MIN: float
+    PRCP: float
+    TEMP_DIFF: float
+    PRCP_BINARY: int
+    pm25_24h: float
+    pm10_24h: float
+    o3_24h: float
+    co_24h: float
+    no2_24h: float
+    so2_24h: float
+    AQI_lag1: float
+    pm25_24h_lag1: float
+    pm10_24h_lag1: float
+    o3_24h_lag1: float
+    co_24h_lag1: float
+    no2_24h_lag1: float
+    so2_24h_lag1: float
+
+# ===================== 加载AutoGluon模型 =====================
+try:
+    # 导入AutoGluon预测器
+    from autogluon.tabular import TabularPredictor
+    
+    # 加载AutoGluon模型
+    model = TabularPredictor.load(MODEL_PATH)
+    print(f" 模型加载成功：{MODEL_PATH}")
+except ImportError as e:
+    raise HTTPException(status_code=500, detail=f"缺少AutoGluon依赖：{str(e)}\n请执行：pip install autogluon")
+except Exception as e:
+    raise HTTPException(status_code=500, detail=f"模型加载失败：{str(e)}")
+
+# ===================== 辅助函数 =====================
+def get_aqi_grade(aqi_value: float) -> tuple:
+    """根据AQI值获取对应的等级和健康信息"""
+    aqi_value = round(aqi_value)
+    for min_val, max_val, grade, health_info in AQI_GRADES:
+        if min_val <= aqi_value <= max_val:
+            return grade, health_info
+    return "Hazardous（危险）", "所有人群面临严重健康风险，应避免所有户外活动，紧急防护"
+
+# ===================== API接口 =====================
+@app.get("/health", summary="健康检查接口")
+async def health_check():
+    return {"code": 200, "status": "healthy", "message": "API服务正常运行"}
+
+@app.post("/predict_aqi", summary="AQI预测接口")
+async def predict_aqi(request: AQIPredictionRequest):
+    try:
+        # 将请求数据转换为DataFrame（AutoGluon要求的输入格式）
+        input_data = pd.DataFrame([request.dict()])
+        
+        # 使用模型进行预测
+        prediction = model.predict(input_data)
+        predict_aqi = float(prediction.iloc[0])
+        
+        # 获取AQI等级和健康建议
+        aqi_grade, health_info = get_aqi_grade(predict_aqi)
+        
+        return {
+            "code": 200,
+            "message": "预测成功",
+            "data": {
+                "predict_aqi": round(predict_aqi, 1),
+                "aqi_grade": aqi_grade,
+                "health_info": health_info
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"预测失败：{str(e)}")
+
+@app.get("/aqi_stats", summary="获取AQI统计信息（模拟）")
+async def get_aqi_stats():
+    """模拟返回AQI统计数据，实际项目中可从数据库读取"""
+    try:
+        return {
+            "code": 200,
+            "message": "获取统计信息成功",
+            "data": {
+                "aqi_min": 12.0,
+                "aqi_max": 189.0,
+                "aqi_mean": 58.2,
+                "aqi_median": 52.5,
+                "aqi_grade_dist": {
+                    "Good（优）": 215,
+                    "Moderate（良）": 128,
+                    "Unhealthy for Sensitive Groups（对敏感人群不健康）": 22,
+                    "Unhealthy（不健康）": 0,
+                    "Very Unhealthy（非常不健康）": 0,
+                    "Hazardous（危险）": 0
+                }
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取统计信息失败：{str(e)}")
+
+# ===================== 启动服务 =====================
+if __name__ == "__main__":
+    # 安装依赖（如果未安装）
+    try:
+        import autogluon
+    except ImportError:
+        os.system("pip install autogluon")
+    
+    print(f" 启动AQI预测API服务：http://{API_HOST}:{API_PORT}")
+    uvicorn.run(
+        app,
+        host=API_HOST,
+        port=API_PORT,
+        log_level="info"
+    )

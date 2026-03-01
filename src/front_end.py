@@ -100,7 +100,7 @@ if page == "数据概览":
     ax.axhline(y=150, color="#ff7e00", linestyle="--", label="Unhealthy for Sensitive(150)")
     ax.set_xlabel("日期")
     ax.set_ylabel("EPA AQI")
-    ax.set_title("2024年阿尔伯克基AQI趋势")
+    ax.set_title("2024 ALBUQUERQUE AQI Trend")
     ax.legend()
     st.pyplot(fig)
     
@@ -110,7 +110,7 @@ if page == "数据概览":
     corr_df = train_df[corr_cols].corr()
     fig, ax = plt.subplots()
     sns.heatmap(corr_df, annot=True, cmap="coolwarm", vmin=-1, vmax=1, ax=ax)
-    ax.set_title("滞后特征相关性热力图")
+    ax.set_title("Feature Correlation Heatmap")
     st.pyplot(fig)
     
     # 数据预览

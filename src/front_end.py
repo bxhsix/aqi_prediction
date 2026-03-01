@@ -98,7 +98,7 @@ if page == "数据概览":
     ax.axhline(y=50, color="#00e400", linestyle="--", label="Good(50)")
     ax.axhline(y=100, color="#ffff00", linestyle="--", label="Moderate(100)")
     ax.axhline(y=150, color="#ff7e00", linestyle="--", label="Unhealthy for Sensitive(150)")
-    ax.set_xlabel("日期")
+    ax.set_xlabel("Date")
     ax.set_ylabel("EPA AQI")
     ax.set_title("2024 ALBUQUERQUE AQI Trend")
     ax.legend()

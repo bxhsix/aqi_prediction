@@ -1,17 +1,16 @@
 import os
 import sys
-import joblib
 import pandas as pd
+import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any
 import uvicorn
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ===================== 配置项 =====================
-# 修改模型路径为AutoGluon模型目录
+# AutoGluon模型路径（你的实际路径）
 MODEL_PATH = "../model/autogluon_model/"
 API_HOST = "0.0.0.0"
 API_PORT = 8000
@@ -29,41 +28,59 @@ AQI_GRADES = [
 # ===================== 初始化FastAPI应用 =====================
 app = FastAPI(title="AQI Prediction API", version="1.0")
 
-# ===================== 数据模型定义 =====================
+# ===================== 数据模型定义（严格匹配前端15个lag1特征）=====================
 class AQIPredictionRequest(BaseModel):
-    TEMP: float
-    DEWP: float
-    SLP: float
-    WDSP: float
-    MAX: float
-    MIN: float
-    PRCP: float
-    TEMP_DIFF: float
-    PRCP_BINARY: int
-    pm25_24h: float
-    pm10_24h: float
-    o3_24h: float
-    co_24h: float
-    no2_24h: float
-    so2_24h: float
-    AQI_lag1: float
-    pm25_24h_lag1: float
-    pm10_24h_lag1: float
-    o3_24h_lag1: float
-    co_24h_lag1: float
-    no2_24h_lag1: float
-    so2_24h_lag1: float
+    """请求模型：严格匹配前端传递的15个lag1特征"""
+    pm25_24h_lag1: float   # 前1日PM2.5 24h均值滞后值
+    pm10_24h_lag1: float   # 前1日PM10 24h均值滞后值
+    o3_24h_lag1: float     # 前1日O3 24h均值滞后值
+    co_24h_lag1: float     # 前1日CO 24h均值滞后值
+    no2_24h_lag1: float    # 前1日NO2 24h均值滞后值
+    so2_24h_lag1: float    # 前1日SO2 24h均值滞后值
+    TEMP_lag1: float       # 前1日平均气温滞后值
+    DEWP_lag1: float       # 前1日露点温度滞后值
+    SLP_lag1: float        # 前1日海平面气压滞后值
+    WDSP_lag1: float       # 前1日平均风速滞后值
+    MAX_lag1: float        # 前1日最高温滞后值
+    MIN_lag1: float        # 前1日最低温滞后值
+    PRCP_lag1: float       # 前1日降雨量滞后值
+    TEMP_DIFF_lag1: float  # 前1日气温日较差滞后值
+    PRCP_BINARY_lag1: int  # 前1日是否降雨滞后值（0/1）
 
 # ===================== 加载AutoGluon模型 =====================
 try:
-    # 导入AutoGluon预测器
-    from autogluon.tabular import TabularPredictor
+    import json
+    import joblib
+
+    # 1. 读取最优模型配置
+    CONFIG_PATH = "../model/model_config.json"
+    with open(CONFIG_PATH, "r") as f:
+        model_config = json.load(f)
     
-    # 加载AutoGluon模型
-    model = TabularPredictor.load(MODEL_PATH)
-    print(f" 模型加载成功：{MODEL_PATH}")
+    best_model_type = model_config["model_type"]
+    best_model_path = model_config["best_model_path"]
+    print(f"最优模型配置：{model_config}")
+
+    # 2. 根据模型类型加载
+    if best_model_type == "autogluon":
+        from autogluon.tabular import TabularPredictor
+        model = TabularPredictor.load(best_model_path)
+        print(f"AutoGluon模型加载成功：{best_model_path}")
+    else:  # sklearn类模型（LinearRegression/RandomForest/XGBoost）
+        model = joblib.load(best_model_path)
+        print(f"Sklearn类模型加载成功：{best_model_path}")
+
+    # 验证模型特征（可选）
+    if best_model_type == "autogluon":
+        print(f"模型训练时的特征列表：{model.feature_metadata_in.get_features()}")
+    else:
+        # 对sklearn模型，假设特征顺序和训练时一致（需和input_data列顺序匹配）
+        print("Sklearn模型特征顺序：和训练时的feature_cols一致")
+
+except FileNotFoundError:
+    raise HTTPException(status_code=500, detail=f"模型配置文件不存在：{CONFIG_PATH}\n请先执行模型训练脚本")
 except ImportError as e:
-    raise HTTPException(status_code=500, detail=f"缺少AutoGluon依赖：{str(e)}\n请执行：pip install autogluon")
+    raise HTTPException(status_code=500, detail=f"缺少依赖：{str(e)}\nAutoGluon模型需执行：pip install autogluon；Sklearn模型需执行：pip install scikit-learn xgboost")
 except Exception as e:
     raise HTTPException(status_code=500, detail=f"模型加载失败：{str(e)}")
 
@@ -84,56 +101,70 @@ async def health_check():
 @app.post("/predict_aqi", summary="AQI预测接口")
 async def predict_aqi(request: AQIPredictionRequest):
     try:
-        # 将请求数据转换为DataFrame（AutoGluon要求的输入格式）
+        # 1. 将请求数据转换为DataFrame（严格匹配模型特征顺序）
         input_data = pd.DataFrame([request.dict()])
         
-        # 使用模型进行预测
-        prediction = model.predict(input_data)
-        predict_aqi = float(prediction.iloc[0])
+        # 2. 调试：打印输入数据（可选）
+        print(f" 接收预测请求：\n{input_data}")
         
-        # 获取AQI等级和健康建议
+        # 3. 使用模型进行预测（兼容autogluon/sklearn）
+        if best_model_type == "autogluon":
+            prediction = model.predict(input_data)
+        else:
+            # sklearn模型预测（需确保特征顺序和训练时一致）
+            prediction = model.predict(input_data)
+        predict_aqi = float(prediction[0] if isinstance(prediction, (list, np.ndarray)) else prediction.iloc[0])
+        
+        # 4. 获取AQI等级和健康建议
         aqi_grade, health_info = get_aqi_grade(predict_aqi)
         
+        # 5. 构造响应（匹配前端预期格式）
         return {
             "code": 200,
-            "message": "预测成功",
+            "msg": "success",  # 前端预期的是msg，不是message
             "data": {
-                "predict_aqi": round(predict_aqi, 1),
+                "predict_aqi": round(predict_aqi),  # 整数返回，符合AQI标准
                 "aqi_grade": aqi_grade,
                 "health_info": health_info
             }
         }
     except Exception as e:
+        # 详细错误日志，方便调试
+        print(f" 预测失败：{str(e)}")
         raise HTTPException(status_code=500, detail=f"预测失败：{str(e)}")
 
-@app.get("/aqi_stats", summary="获取AQI统计信息（模拟）")
+@app.get("/aqi_stats", summary="获取AQI统计信息")
 async def get_aqi_stats():
-    """模拟返回AQI统计数据，实际项目中可从数据库读取"""
+    """返回历史AQI统计数据（从训练数据读取）"""
     try:
+        # 读取训练数据获取真实统计
+        train_df = pd.read_csv("../data/processed/aqi_train_data.csv")
+        aqi_series = train_df["AQI"]
+        
+        # 计算等级分布
+        aqi_grade_dist = {}
+        for aqi in aqi_series:
+            grade, _ = get_aqi_grade(aqi)
+            aqi_grade_dist[grade] = aqi_grade_dist.get(grade, 0) + 1
+        
         return {
             "code": 200,
-            "message": "获取统计信息成功",
+            "msg": "success",
             "data": {
-                "aqi_min": 12.0,
-                "aqi_max": 189.0,
-                "aqi_mean": 58.2,
-                "aqi_median": 52.5,
-                "aqi_grade_dist": {
-                    "Good（优）": 215,
-                    "Moderate（良）": 128,
-                    "Unhealthy for Sensitive Groups（对敏感人群不健康）": 22,
-                    "Unhealthy（不健康）": 0,
-                    "Very Unhealthy（非常不健康）": 0,
-                    "Hazardous（危险）": 0
-                }
+                "aqi_min": round(aqi_series.min()),
+                "aqi_max": round(aqi_series.max()),
+                "aqi_mean": round(aqi_series.mean(), 2),
+                "aqi_median": round(aqi_series.median()),
+                "aqi_grade_dist": aqi_grade_dist
             }
         }
     except Exception as e:
+        print(f" 获取统计信息失败：{str(e)}")
         raise HTTPException(status_code=500, detail=f"获取统计信息失败：{str(e)}")
 
 # ===================== 启动服务 =====================
 if __name__ == "__main__":
-    # 安装依赖（如果未安装）
+    # 自动安装依赖（可选）
     try:
         import autogluon
     except ImportError:

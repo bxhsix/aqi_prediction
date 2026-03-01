@@ -1,0 +1,23 @@
+{
+    "best_model_name": "AutoGluon_Best",
+    "best_model_path": "../model/autogluon_model",
+    "model_type": "autogluon",
+    "feature_cols": [
+        "pm25_24h_lag1",
+        "pm10_24h_lag1",
+        "o3_24h_lag1",
+        "co_24h_lag1",
+        "no2_24h_lag1",
+        "so2_24h_lag1",
+        "TEMP_lag1",
+        "DEWP_lag1",
+        "SLP_lag1",
+        "WDSP_lag1",
+        "MAX_lag1",
+        "MIN_lag1",
+        "PRCP_lag1",
+        "TEMP_DIFF_lag1",
+        "PRCP_BINARY_lag1"
+    ],
+    "train_time": "2026-03-01 04:02:59.512610"
+}

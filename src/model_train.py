@@ -153,6 +153,31 @@ def select_best_model(basic_models, automl_predictor, X_test, y_test):
     else:
         joblib.dump(basic_models[best_model_name], os.path.join(MODEL_SAVE_PATH, "aqi_best_model.pkl"))
         print(f"最优模型已保存至：{os.path.join(MODEL_SAVE_PATH, 'aqi_best_model.pkl')}")
+
+    import json
+    feature_cols = [
+        "pm25_24h_lag1", "pm10_24h_lag1", "o3_24h_lag1", "co_24h_lag1", 
+        "no2_24h_lag1", "so2_24h_lag1", "TEMP_lag1", "DEWP_lag1", 
+        "SLP_lag1", "WDSP_lag1", "MAX_lag1", "MIN_lag1", 
+        "PRCP_lag1", "TEMP_DIFF_lag1", "PRCP_BINARY_lag1"
+    ]
+
+    # 保存最优模型配置
+    model_config = {
+        "best_model_name": best_model_name,
+        "best_model_path": os.path.join(MODEL_SAVE_PATH, "autogluon_model") if best_model_name == "AutoGluon_Best" 
+                           else os.path.join(MODEL_SAVE_PATH, "aqi_best_model.pkl"),
+        "model_type": "autogluon" if best_model_name == "AutoGluon_Best" else "sklearn",
+        "feature_cols": feature_cols,  # 保存训练时的特征列表（含顺序）
+        "train_time": str(pd.Timestamp.now())  # 训练时间（可选）
+    }
+
+    # 保存配置到model目录
+    config_path = os.path.join(MODEL_SAVE_PATH, "model_config.json")
+    with open(config_path, "w") as f:
+        json.dump(model_config, f, indent=4)
+    print(f"最优模型配置已保存至：{config_path}")
+
     return best_model_name
 
 # ===================== 主函数 =====================

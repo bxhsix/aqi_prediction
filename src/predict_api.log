@@ -1,0 +1,29 @@
+nohup: ignoring input
+INFO:     Started server process [74748]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+/home/ubuntu/aqi_prediction/src/predict_api.py:144: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+  input_data = pd.DataFrame([request.dict()])
+ 加载最优模型配置：
+  - 模型类型：autogluon
+  - 模型路径：../model/autogluon_model
+  - 训练特征列表：['pm25_24h_lag1', 'pm10_24h_lag1', 'o3_24h_lag1', 'co_24h_lag1', 'no2_24h_lag1', 'so2_24h_lag1', 'TEMP_lag1', 'DEWP_lag1', 'SLP_lag1', 'WDSP_lag1', 'MAX_lag1', 'MIN_lag1', 'PRCP_lag1', 'TEMP_DIFF_lag1', 'PRCP_BINARY_lag1']
+ 模型加载成功！训练特征数量：15
+ 启动AQI预测API服务：http://0.0.0.0:8000
+ 接收预测请求：
+   pm25_24h_lag1  pm10_24h_lag1  ...  TEMP_DIFF_lag1  PRCP_BINARY_lag1
+0           10.0           20.0  ...            20.0                 0
+
+[1 rows x 15 columns]
+ 特征校验通过：请求特征与训练特征完全一致
+INFO:     127.0.0.1:48122 - "POST /predict_aqi HTTP/1.1" 200 OK
+/home/ubuntu/aqi_prediction/src/predict_api.py:144: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+  input_data = pd.DataFrame([request.dict()])
+ 接收预测请求：
+   pm25_24h_lag1  pm10_24h_lag1  ...  TEMP_DIFF_lag1  PRCP_BINARY_lag1
+0           10.0           20.0  ...            20.0                 0
+
+[1 rows x 15 columns]
+ 特征校验通过：请求特征与训练特征完全一致
+INFO:     127.0.0.1:48156 - "POST /predict_aqi HTTP/1.1" 200 OK

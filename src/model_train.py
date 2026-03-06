@@ -99,10 +99,12 @@ def train_basic_models(X_train, X_test, y_train, y_test):
         print(f"{name}: R={metrics['r2']:.2f}, RMSE={metrics['rmse']:.2f}")
     return trained_models, model_metrics
 
-def train_automl_model(X, y):
+def train_automl_model(X_train, X_test, y_train, y_test):
     print("\n开始AutoML模型训练（AutoGluon）...")
-    train_data = X.copy()
-    train_data[TARGET] = y
+    train_data = X_train.copy()
+    train_data[TARGET] = y_train
+    test_data = X_test.copy()
+    test_data[TARGET] = y_test
 
     predictor = TabularPredictor(
         label=TARGET,
@@ -113,13 +115,14 @@ def train_automl_model(X, y):
 
     predictor.fit(
         train_data=train_data,
+        # tuning_data=test_data,
         time_limit=600,
         presets="medium_quality_faster_train",
         excluded_model_types=['NN_TORCH', 'FASTAI', 'GBM', 'CAT'],
         verbosity=1
     )
 
-    leaderboard = predictor.leaderboard(silent=True)
+    leaderboard = predictor.leaderboard(test_data, silent=True)
     rename_cols = {'val_r2': 'r2', 'val_rmse': 'rmse', 'model': 'model'}
     available_cols = [col for col in rename_cols.keys() if col in leaderboard.columns]
     leaderboard_simple = leaderboard[available_cols].rename(columns=rename_cols)
@@ -185,7 +188,7 @@ if __name__ == "__main__":
     try:
         X_train, X_test, y_train, y_test, X, y = load_and_split_data(TRAIN_DATA_PATH)
         basic_models, model_metrics = train_basic_models(X_train, X_test, y_train, y_test)
-        automl_predictor = train_automl_model(X, y)
+        automl_predictor = train_automl_model(X_train, X_test, y_train, y_test)
         best_model = select_best_model(basic_models, automl_predictor, X_test, y_test)
         print("\n 模型训练全流程完成！")
     except Exception as e:
